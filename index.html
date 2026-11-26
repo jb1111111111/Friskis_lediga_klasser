@@ -7,73 +7,110 @@
 <style>
 :root{color-scheme:light;--green:#087f45;--ink:#17231c;--muted:#66736b;--line:#e3e9e5;--bg:#f5f8f6}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-main{max-width:850px;margin:48px auto;padding:0 18px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+main{max-width:900px;margin:38px auto;padding:0 16px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 h1{font-size:clamp(27px,5vw,38px);line-height:1.1;margin:0 0 8px}.sub{color:var(--muted);margin:0}
-button{border:0;border-radius:12px;background:var(--green);color:white;font-weight:700;padding:13px 18px;font-size:15px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
-.panel{margin-top:24px;background:white;border:1px solid var(--line);border-radius:18px;padding:20px}
-.status{color:var(--muted);font-size:14px}.class{padding:15px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
-.class h2{font-size:18px;margin:0}.meta{color:var(--muted);font-size:14px}.pill{display:inline-block;background:#e8f6ee;color:#087f45;padding:3px 9px;border-radius:20px;font-size:13px;font-weight:700}
-.note{font-size:13px;color:var(--muted);margin-top:18px}
+button,select{font:inherit}button{border:0;border-radius:11px;background:var(--green);color:white;font-weight:700;padding:11px 16px;font-size:14px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
+.panel{margin-top:20px;background:white;border:1px solid var(--line);border-radius:18px;padding:18px}
+.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.filter label{display:block;font-size:13px;color:var(--muted);font-weight:700;margin-bottom:5px}
+select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink)}
+.days{display:flex;gap:7px;overflow-x:auto;padding:3px 1px 12px;scrollbar-width:thin}
+.days button{flex:0 0 auto;background:#edf3ef;color:var(--ink);padding:9px 12px;min-width:67px}
+.days button.active{background:var(--green);color:white}
+.dayname{display:block;font-size:12px;font-weight:500;opacity:.85}.daynum{display:block;font-size:15px}
+.status{color:var(--muted);font-size:14px;margin:5px 0 12px}.class{padding:14px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
+.classhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.class h2{font-size:17px;margin:0}.meta{color:var(--muted);font-size:13px;margin:3px 0 7px}
+.pill{display:inline-block;background:#e8f6ee;color:#087f45;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700}
+.fav{background:transparent;color:#b17b00;padding:0 4px;font-size:24px;line-height:1;min-width:34px}.fav:hover{background:#fff8df}
+.note{font-size:12px;color:var(--muted);margin:16px 2px}
+@media(max-width:520px){main{margin:24px auto}.panel{padding:14px}.filters{grid-template-columns:1fr}.top button{width:100%}}
 </style>
 </head>
 <body><main>
-<div class="top"><div><h1>Friskis – lediga klasser</h1><p class="sub">Visar träningspass med bokningsbara platser.</p></div><button id="refresh">Uppdatera klasser</button></div>
-<section class="panel"><div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div><div id="results"></div></section>
-<p class="note">Anläggningar: Uppsala-anläggningarna i urvalet. Listan uppdateras endast när du trycker på knappen.</p>
+<div class="top"><div><h1>Friskis – lediga klasser</h1><p class="sub">Hitta pass och spara dina favoriter.</p></div><button id="refresh">Uppdatera klasser</button></div>
+<section class="panel">
+  <div class="filters">
+    <div class="filter"><label for="availability">Platser</label><select id="availability"><option value="all">Alla pass</option><option value="available">Endast lediga</option></select></div>
+    <div class="filter"><label for="passFilter">Pass</label><select id="passFilter"><option value="all">Alla pass</option><option value="favorites">Endast mina favoriter</option></select></div>
+  </div>
+  <div id="days" class="days" aria-label="Välj dag"></div>
+  <div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div>
+  <div id="results"></div>
+</section>
+<p class="note">Dina filter och favoriter sparas automatiskt i den här webbläsaren. Datumvalet börjar alltid på dagens datum. Listan omfattar 14 dagar framåt.</p>
 <script>
 const API='https://friskis-api.benny-larsson-23a.workers.dev/classes';
 const BUSINESS_UNITS=[6184,6186,6185,6188,6187];
-const CUSTOMER_ID='1370766';
+const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
+const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days');
+let activities=[];
+let selectedDay=0;
+let preferences={availability:'available',passFilter:'all',favorites:[]};
+try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];}catch{}
+availabilityEl.value=preferences.availability;
+passFilterEl.value=preferences.passFilter;
+function savePreferences(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(preferences));}catch{}}
 function setStatus(s){statusEl.textContent=s}
-function getActivities(payload){
-  if(Array.isArray(payload)) return payload;
-  for(const key of ['groupActivities','items','data','results']) if(Array.isArray(payload?.[key])) return payload[key];
-  return [];
-}
-function localDateTime(iso){
-  return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso));
-}
-function names(items){
-  if(!Array.isArray(items)) return '';
-  return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ');
-}
-function render(activities){
-  const available=activities.filter(p=>
-    BUSINESS_UNITS.includes(Number(p.businessUnit?.id)) &&
-    !p.cancelled &&
-    Number(p.slots?.leftToBook)>0 &&
-    p.duration?.start
-  ).sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
-  resultsEl.replaceChildren();
-  if(!available.length){setStatus('Inga pass med bokningsbara platser hittades i den hämtade perioden.');return}
-  for(const pass of available){
-    const row=document.createElement('article');row.className='class';
-    const title=document.createElement('h2');title.textContent=pass.name||pass.groupActivityProduct?.name||'Träningspass';
-    const meta=document.createElement('div');meta.className='meta';
-    const details=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean);
-    meta.textContent=details.join(' · ');
-    const count=document.createElement('span');count.className='pill';count.textContent=pass.slots.leftToBook+' lediga platser';
-    row.append(title,meta,count);resultsEl.append(row);
+function getActivities(payload){if(Array.isArray(payload))return payload;for(const key of ['groupActivities','items','data','results'])if(Array.isArray(payload?.[key]))return payload[key];return []}
+function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
+function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
+function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
+function dayKey(date){return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0')}
+function makeDays(){
+  daysEl.replaceChildren();
+  for(let i=0;i<14;i++){
+    const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+i);
+    const b=document.createElement('button');b.type='button';b.className=i===selectedDay?'active':'';
+    const weekday=document.createElement('span');weekday.className='dayname';weekday.textContent=i===0?'Idag':new Intl.DateTimeFormat('sv-SE',{weekday:'short'}).format(d);
+    const date=document.createElement('span');date.className='daynum';date.textContent=new Intl.DateTimeFormat('sv-SE',{day:'numeric',month:'short'}).format(d);
+    b.append(weekday,date);b.setAttribute('aria-pressed',String(i===selectedDay));b.addEventListener('click',()=>{selectedDay=i;makeDays();render()});daysEl.append(b);
   }
-  setStatus('Uppdaterad '+new Date().toLocaleString('sv-SE')+' · '+available.length+' pass med lediga platser');
 }
+function toggleFavorite(pass){
+  const key=passKey(pass);if(!key)return;
+  preferences.favorites=preferences.favorites.includes(key)?preferences.favorites.filter(x=>x!==key):[...preferences.favorites,key];
+  savePreferences();render();
+}
+function render(){
+  const chosenDate=new Date();chosenDate.setHours(0,0,0,0);chosenDate.setDate(chosenDate.getDate()+selectedDay);
+  const chosenKey=dayKey(chosenDate);
+  let filtered=activities.filter(p=>BUSINESS_UNITS.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
+  if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0);
+  filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
+  if(preferences.passFilter==='favorites')filtered=filtered.filter(p=>preferences.favorites.includes(passKey(p)));
+  filtered.sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
+  resultsEl.replaceChildren();
+  if(!filtered.length){setStatus('Inga pass matchar dina filter för den här dagen.');return}
+  for(const pass of filtered){
+    const row=document.createElement('article');row.className='class';
+    const head=document.createElement('div');head.className='classhead';
+    const title=document.createElement('h2');title.textContent=pass.name||pass.groupActivityProduct?.name||'Träningspass';
+    const key=passKey(pass),isFav=preferences.favorites.includes(key);
+    const star=document.createElement('button');star.type='button';star.className='fav';star.textContent=isFav?'★':'☆';star.title=isFav?'Ta bort favorit':'Spara som favorit';star.setAttribute('aria-label',star.title);star.addEventListener('click',()=>toggleFavorite(pass));
+    head.append(title,star);
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
+    row.append(head,meta);
+    const spots=Number(pass.slots?.leftToBook)||0;
+    const count=document.createElement('span');count.className='pill';count.textContent=spots>0?spots+' lediga platser':'Fullbokat';row.append(count);
+    resultsEl.append(row);
+  }
+  setStatus(filtered.length+' pass visas · '+new Intl.DateTimeFormat('sv-SE',{dateStyle:'full'}).format(chosenDate));
+}
+availabilityEl.addEventListener('change',()=>{preferences.availability=availabilityEl.value;savePreferences();render()});
+passFilterEl.addEventListener('change',()=>{preferences.passFilter=passFilterEl.value;savePreferences();render()});
 async function refresh(){
-  button.disabled=true;resultsEl.replaceChildren();setStatus('Hämtar aktuella pass …');
+  button.disabled=true;setStatus('Hämtar aktuella pass …');
   try{
     const response=await fetch(API,{method:'GET',cache:'no-store'});
-    if(!response.ok) {
-      let detail='';
-      try { const err=await response.json(); detail=err.error||err.message||''; } catch {}
-      throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''));
-    }
-    const payload=await response.json();
-    const activities=getActivities(payload);
-    if(!activities.length) throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
-    render(activities);
-  }catch(err){
-    setStatus('Kunde inte hämta klasser: '+String(err.message||err));
-  }finally{button.disabled=false}
+    if(!response.ok){let detail='';try{const err=await response.json();detail=err.error||err.message||''}catch{}throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''))}
+    const payload=await response.json();activities=getActivities(payload);
+    if(!activities.length)throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
+    render();
+  }catch(err){setStatus('Kunde inte hämta klasser: '+String(err.message||err))}
+  finally{button.disabled=false}
 }
 button.addEventListener('click',refresh);
+makeDays();
 </script></main></body></html>
