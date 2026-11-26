@@ -45,7 +45,7 @@ const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days');
 let activities=[];
-let selectedDay=0;
+let selectedDay=null; // null betyder alla dagar
 let preferences={availability:'available',passFilter:'all',favorites:[]};
 try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];}catch{}
 availabilityEl.value=preferences.availability;
@@ -59,6 +59,13 @@ function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupAct
 function dayKey(date){return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0')}
 function makeDays(){
   daysEl.replaceChildren();
+  const allButton=document.createElement('button');
+  allButton.type='button';
+  allButton.className=selectedDay===null?'active':'';
+  allButton.textContent='Alla dagar';
+  allButton.setAttribute('aria-pressed',String(selectedDay===null));
+  allButton.addEventListener('click',()=>{selectedDay=null;makeDays();render()});
+  daysEl.append(allButton);
   for(let i=0;i<14;i++){
     const d=new Date();d.setHours(0,0,0,0);d.setDate(d.getDate()+i);
     const b=document.createElement('button');b.type='button';b.className=i===selectedDay?'active':'';
@@ -73,15 +80,18 @@ function toggleFavorite(pass){
   savePreferences();render();
 }
 function render(){
-  const chosenDate=new Date();chosenDate.setHours(0,0,0,0);chosenDate.setDate(chosenDate.getDate()+selectedDay);
-  const chosenKey=dayKey(chosenDate);
+  const chosenDate=new Date();chosenDate.setHours(0,0,0,0);
+  if(selectedDay!==null)chosenDate.setDate(chosenDate.getDate()+selectedDay);
   let filtered=activities.filter(p=>BUSINESS_UNITS.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
   if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0);
-  filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
+  if(selectedDay!==null){
+    const chosenKey=dayKey(chosenDate);
+    filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
+  }
   if(preferences.passFilter==='favorites')filtered=filtered.filter(p=>preferences.favorites.includes(passKey(p)));
   filtered.sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
   resultsEl.replaceChildren();
-  if(!filtered.length){setStatus('Inga pass matchar dina filter för den här dagen.');return}
+  if(!filtered.length){setStatus(selectedDay===null?'Inga pass matchar dina filter i den valda perioden.':'Inga pass matchar dina filter för den här dagen.');return}
   for(const pass of filtered){
     const row=document.createElement('article');row.className='class';
     const head=document.createElement('div');head.className='classhead';
@@ -96,7 +106,9 @@ function render(){
     const count=document.createElement('span');count.className='pill';count.textContent=spots>0?spots+' lediga platser':'Fullbokat';row.append(count);
     resultsEl.append(row);
   }
-  setStatus(filtered.length+' pass visas · '+new Intl.DateTimeFormat('sv-SE',{dateStyle:'full'}).format(chosenDate));
+  setStatus(selectedDay===null
+    ? filtered.length+' pass visas · Alla dagar (14 dagar framåt)'
+    : filtered.length+' pass visas · '+new Intl.DateTimeFormat('sv-SE',{dateStyle:'full'}).format(chosenDate));
 }
 availabilityEl.addEventListener('change',()=>{preferences.availability=availabilityEl.value;savePreferences();render()});
 passFilterEl.addEventListener('change',()=>{preferences.passFilter=passFilterEl.value;savePreferences();render()});
