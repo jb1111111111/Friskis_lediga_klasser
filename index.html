@@ -150,6 +150,10 @@ function makeDays(){
     b.append(weekday,date);b.setAttribute('aria-pressed',String(i===selectedDay));b.addEventListener('click',()=>{selectedDay=i;makeDays();render()});daysEl.append(b);
   }
 }
+function isBookedActivity(pass){
+  const id=Number(pass.id||pass.groupActivity?.id||pass.groupActivityProduct?.id);
+  return (Number.isSafeInteger(id)&&id>0&&(myBookings.some(b=>Number(b.groupActivity?.id)===id)||Boolean(ownBookings[String(id)])));
+}
 function toggleFavorite(pass){
   const key=passKey(pass);if(!key)return;
   preferences.favorites=preferences.favorites.includes(key)?preferences.favorites.filter(x=>x!==key):[...preferences.favorites,key];
@@ -165,7 +169,7 @@ function render(){
     filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
   }
   if(preferences.passFilter==='favorites')filtered=filtered.filter(p=>preferences.favorites.includes(passKey(p)));
-  filtered.sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
+  filtered.sort((a,b)=>Number(isBookedActivity(b))-Number(isBookedActivity(a))||new Date(a.duration.start)-new Date(b.duration.start));
   resultsEl.replaceChildren();
   if(!filtered.length){setStatus(selectedDay===null?'Inga pass matchar dina filter i den valda perioden.':'Inga pass matchar dina filter för den här dagen.');return}
   for(const pass of filtered){
@@ -178,6 +182,9 @@ function render(){
     const meta=document.createElement('div');meta.className='meta';
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
+    if(isBookedActivity(pass)){
+      const bookedLabel=document.createElement('span');bookedLabel.className='pill available';bookedLabel.textContent='DIN BOKNING';bookedLabel.style.marginBottom='8px';row.append(bookedLabel);
+    }
     const spots=Number(pass.slots?.leftToBook)||0;
     const total=Number(pass.slots?.total);
     const hasTotal=Number.isFinite(total)&&total>=0;
