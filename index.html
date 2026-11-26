@@ -11,6 +11,7 @@ main{max-width:900px;margin:38px auto;padding:0 16px}.top{display:flex;align-ite
 h1{font-size:clamp(27px,5vw,38px);line-height:1.1;margin:0 0 8px}.sub{color:var(--muted);margin:0}
 button,select{font:inherit}button{border:0;border-radius:11px;background:var(--green);color:white;font-weight:700;padding:11px 16px;font-size:14px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
 .panel{margin-top:20px;background:white;border:1px solid var(--line);border-radius:18px;padding:18px}
+.bookings-title{font-size:19px;margin:4px 0 8px}.booking-card{padding:12px 0;border-bottom:1px solid var(--line)}.booking-card:last-child{border-bottom:0}.booking-card .booking-name{font-weight:750}.booking-card .meta{margin:3px 0 8px}
 .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:17px}
 .facilities{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 16px}.facility-toggle{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:11px;background:#f8faf8;font-size:14px;font-weight:600;cursor:pointer}.facility-toggle input{width:17px;height:17px;margin:0;accent-color:var(--green)}.facility-heading{font-size:13px;color:var(--muted);font-weight:700;margin:0 0 8px}
 .filter label{display:block;font-size:13px;color:var(--muted);font-weight:700;margin-bottom:5px}
@@ -44,6 +45,10 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
     <input id="appPassword" type="password" autocomplete="current-password" placeholder="Bokningslösenord" aria-label="Bokningslösenord">
     <button id="activateBooking" type="button">Aktivera bokning</button>
     <span id="authState" class="auth-state">Bokning är låst tills du anger ditt separata bokningslösenord.</span>
+  </div>
+  <div id="myBookingsSection" hidden>
+    <h2 class="bookings-title">Mina bokningar</h2>
+    <div id="myBookingsResults"></div>
   </div>
   <div class="filters">
     <div class="filter"><label for="availability">Platser</label><select id="availability"><option value="all">Alla pass</option><option value="available">Endast lediga</option></select></div>
@@ -87,6 +92,7 @@ if(appPassword){appPasswordEl.placeholder='Lösenord sparat för den här fliken
 
 const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
+const myBookingsSection=document.querySelector('#myBookingsSection'),myBookingsResults=document.querySelector('#myBookingsResults');
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
 let activities=[];
 let myBookings=[];
@@ -154,22 +160,41 @@ function isBookedActivity(pass){
   const id=Number(pass.id||pass.groupActivity?.id||pass.groupActivityProduct?.id);
   return (Number.isSafeInteger(id)&&id>0&&(myBookings.some(b=>Number(b.groupActivity?.id)===id)||Boolean(ownBookings[String(id)])));
 }
+function renderMyBookings(){
+  myBookingsResults.replaceChildren();
+  const bookings=[...myBookings].filter(b=>b?.groupActivityBooking?.id&&b?.groupActivity?.id);
+  myBookingsSection.hidden=!appPassword||bookings.length===0;
+  bookings.sort((a,b)=>new Date(a.duration?.start||0)-new Date(b.duration?.start||0));
+  for(const booking of bookings){
+    const row=document.createElement('article');row.className='booking-card';
+    const title=document.createElement('div');title.className='booking-name';title.textContent=booking.groupActivity?.name||'Träningspass';
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=[booking.duration?.start?localDateTime(booking.duration.start):'',booking.businessUnit?.name||''].filter(Boolean).join(' · ');
+    const label=document.createElement('span');label.className='pill available';label.textContent='DIN BOKNING';
+    const actions=document.createElement('div');actions.className='booking-actions';
+    const cancel=document.createElement('button');cancel.type='button';cancel.className='booking-action cancel';cancel.textContent='Avboka';cancel.disabled=!appPassword;
+    const activityId=Number(booking.groupActivity.id),bookingId=booking.groupActivityBooking.id;
+    cancel.addEventListener('click',()=>cancelClass(activityId,bookingId,booking.groupActivity?.name||'passet',cancel));
+    actions.append(cancel);row.append(title,meta,label,actions);myBookingsResults.append(row);
+  }
+}
 function toggleFavorite(pass){
   const key=passKey(pass);if(!key)return;
   preferences.favorites=preferences.favorites.includes(key)?preferences.favorites.filter(x=>x!==key):[...preferences.favorites,key];
   savePreferences();render();
 }
 function render(){
+  renderMyBookings();
   const chosenDate=new Date();chosenDate.setHours(0,0,0,0);
   if(selectedDay!==null)chosenDate.setDate(chosenDate.getDate()+selectedDay);
-  let filtered=activities.filter(p=>preferences.businessUnits.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
+  let filtered=activities.filter(p=>preferences.businessUnits.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start&&!isBookedActivity(p));
   if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0||myBookings.some(b=>Number(b.groupActivity?.id)===Number(p.id||p.groupActivity?.id||p.groupActivityProduct?.id)));
   if(selectedDay!==null){
     const chosenKey=dayKey(chosenDate);
     filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
   }
   if(preferences.passFilter==='favorites')filtered=filtered.filter(p=>preferences.favorites.includes(passKey(p)));
-  filtered.sort((a,b)=>Number(isBookedActivity(b))-Number(isBookedActivity(a))||new Date(a.duration.start)-new Date(b.duration.start));
+  filtered.sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
   resultsEl.replaceChildren();
   if(!filtered.length){setStatus(selectedDay===null?'Inga pass matchar dina filter i den valda perioden.':'Inga pass matchar dina filter för den här dagen.');return}
   for(const pass of filtered){
@@ -182,9 +207,6 @@ function render(){
     const meta=document.createElement('div');meta.className='meta';
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
-    if(isBookedActivity(pass)){
-      const bookedLabel=document.createElement('span');bookedLabel.className='pill available';bookedLabel.textContent='DIN BOKNING';bookedLabel.style.marginBottom='8px';row.append(bookedLabel);
-    }
     const spots=Number(pass.slots?.leftToBook)||0;
     const total=Number(pass.slots?.total);
     const hasTotal=Number.isFinite(total)&&total>=0;
