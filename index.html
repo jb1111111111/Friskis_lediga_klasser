@@ -13,64 +13,77 @@ button{border:0;border-radius:12px;background:var(--green);color:white;font-weig
 .panel{margin-top:24px;background:white;border:1px solid var(--line);border-radius:18px;padding:20px}
 .status{color:var(--muted);font-size:14px}.class{padding:15px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
 .class h2{font-size:18px;margin:0}.meta{color:var(--muted);font-size:14px}.pill{display:inline-block;background:#e8f6ee;color:#087f45;padding:3px 9px;border-radius:20px;font-size:13px;font-weight:700}
-a{color:var(--green)}.note{font-size:13px;color:var(--muted);margin-top:18px}
+.note{font-size:13px;color:var(--muted);margin-top:18px}
 </style>
 </head>
 <body><main>
-<div class="top"><div><h1>Friskis – lediga klasser</h1><p class="sub">Visar träningspass med lediga platser.</p></div><button id="refresh">Uppdatera klasser</button></div>
+<div class="top"><div><h1>Friskis – lediga klasser</h1><p class="sub">Visar träningspass med bokningsbara platser.</p></div><button id="refresh">Uppdatera klasser</button></div>
 <section class="panel"><div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div><div id="results"></div></section>
-<p class="note">Anläggningsfilter: 6184, 6186, 6185, 6188 och 6187. Uppgifterna hämtas först när du själv uppdaterar.</p>
+<p class="note">Anläggningar: Uppsala-anläggningarna i urvalet. Listan uppdateras endast när du trycker på knappen.</p>
 <script>
-const SOURCE='https://friskissvettis.goactivebooking.com/class-web-categories/22/classes?facility=6184%7C6186%7C6185%7C6188%7C6187';
-const statusEl=document.querySelector('#status'), resultsEl=document.querySelector('#results'), button=document.querySelector('#refresh');
+const API='https://friskissvettis.brpsystems.com/brponline/api/ver3/apps/59/groupactivities';
+const BUSINESS_UNITS=[6184,6186,6185,6188,6187];
+const CUSTOMER_ID='1370766';
+const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
 function setStatus(s){statusEl.textContent=s}
-function text(el){return (el?.textContent||'').replace(/\\s+/g,' ').trim()}
-function parseClasses(doc){
-  const anchors=[...doc.querySelectorAll('a[href]')];
-  const candidates=[];
-  const seen=new Set();
-  for(const a of anchors){
-    const card=a.closest('article,[class*="class"],[class*="event"],[class*="card"],li')||a.parentElement;
-    if(!card) continue;
-    const content=text(card);
-    if(content.length<18||content.length>1200) continue;
-    const key=content+'|'+a.href;
-    if(seen.has(key)) continue; seen.add(key);
-    const booking=/(boka|book|reserve)/i.test(content);
-    const availability=/(\\d+\\s*(lediga|platser kvar|available)|ledig plats|available spot)/i.test(content);
-    const full=/(fullbokad|fullt|full|wait.?list|reservlista)/i.test(content);
-    if(booking||availability||(!full&&/\\b(\\d{1,2}:\\d{2})\\b/.test(content))){
-      candidates.push({content,url:a.href,availability,full});
-    }
+function getActivities(payload){
+  if(Array.isArray(payload)) return payload;
+  for(const key of ['groupActivities','items','data','results']) if(Array.isArray(payload?.[key])) return payload[key];
+  return [];
+}
+function localDateTime(iso){
+  return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso));
+}
+function names(items){
+  if(!Array.isArray(items)) return '';
+  return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ');
+}
+function render(activities){
+  const available=activities.filter(p=>
+    BUSINESS_UNITS.includes(Number(p.businessUnit?.id)) &&
+    !p.cancelled &&
+    Number(p.slots?.leftToBook)>0 &&
+    p.duration?.start
+  ).sort((a,b)=>new Date(a.duration.start)-new Date(b.duration.start));
+  resultsEl.replaceChildren();
+  if(!available.length){setStatus('Inga pass med bokningsbara platser hittades i den hämtade perioden.');return}
+  for(const pass of available){
+    const row=document.createElement('article');row.className='class';
+    const title=document.createElement('h2');title.textContent=pass.name||pass.groupActivityProduct?.name||'Träningspass';
+    const meta=document.createElement('div');meta.className='meta';
+    const details=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean);
+    meta.textContent=details.join(' · ');
+    const count=document.createElement('span');count.className='pill';count.textContent=pass.slots.leftToBook+' lediga platser';
+    row.append(title,meta,count);resultsEl.append(row);
   }
-  return candidates.filter(x=>x.availability&&!x.full);
+  setStatus('Uppdaterad '+new Date().toLocaleString('sv-SE')+' · '+available.length+' pass med lediga platser');
 }
 async function refresh(){
- button.disabled=true;resultsEl.replaceChildren();setStatus('Hämtar klasser från GoActiveBooking …');
- try{
-  const response=await fetch(SOURCE,{mode:'cors',credentials:'omit',cache:'no-store'});
-  if(!response.ok) throw new Error('Källsidan svarade med HTTP '+response.status+'.');
-  const html=await response.text();
-  const doc=new DOMParser().parseFromString(html,'text/html');
-  const classes=parseClasses(doc);
-  if(!classes.length){
-    setStatus('Sidan gick att läsa, men vi kunde inte säkert identifiera lediga klasser i HTML-svaret. Vi behöver undersöka sidans faktiska klassdata/API innan filtreringen kan göras korrekt.');
-  }else{
-    setStatus('Hämtad '+new Date().toLocaleString('sv-SE')+' · '+classes.length+' möjliga lediga klasser');
-    for(const item of classes){
-      const row=document.createElement('article');row.className='class';
-      const title=document.createElement('h2');title.textContent=item.content.slice(0,100);
-      const meta=document.createElement('div');meta.className='meta';meta.textContent='Öppna bokningen för detaljer';
-      const link=document.createElement('a');link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='Till bokningen';
-      row.append(title,meta,link);resultsEl.append(row);
-    }
-  }
- }catch(err){
-  const msg=String(err);
-  if(err instanceof TypeError||/fetch|cors|network/i.test(msg)){
-   setStatus('Webbläsaren kunde inte läsa GoActiveBooking direkt (troligen CORS-skydd). Ingen klassdata har hämtats. Nästa steg är att hitta ett publikt JSON-anrop som tillåter anrop från den här webbplatsen, eller använda en liten proxy.');
-  }else setStatus('Kunde inte hämta klasser: '+msg);
- }finally{button.disabled=false}
+  button.disabled=true;resultsEl.replaceChildren();setStatus('Hämtar aktuella pass …');
+  try{
+    const now=new Date();
+    const end=new Date(now);
+    end.setDate(end.getDate()+7);
+    end.setHours(23,59,59,999);
+    const params=new URLSearchParams();
+    BUSINESS_UNITS.forEach(id=>params.append('businessUnit',String(id)));
+    params.set('customer',CUSTOMER_ID);
+    params.set('groupActivitiesFor','web');
+    params.set('period.start',now.toISOString());
+    params.set('period.end',end.toISOString());
+    params.set('webCategory','22');
+    const response=await fetch(API+'?'+params.toString(),{mode:'cors',credentials:'omit',cache:'no-store'});
+    if(!response.ok) throw new Error('API:t svarade med HTTP '+response.status+'.');
+    const payload=await response.json();
+    const activities=getActivities(payload);
+    if(!activities.length) throw new Error('API-svaret innehöll ingen lista med pass i ett format vi känner igen.');
+    render(activities);
+  }catch(err){
+    const msg=String(err);
+    if(err instanceof TypeError||/fetch|cors|network/i.test(msg)){
+      setStatus('Webbläsaren blockerade API-anropet (troligen CORS). Då behöver vi lägga till en liten serverlös proxy; sidan kan inte hämta datan direkt från webbläsaren.');
+    }else setStatus('Kunde inte hämta klasser: '+msg);
+  }finally{button.disabled=false}
 }
 button.addEventListener('click',refresh);
 </script></main></body></html>
