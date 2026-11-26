@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Friskis – lediga klasser</title>
+<style>
+:root{color-scheme:light;--green:#087f45;--ink:#17231c;--muted:#66736b;--line:#e3e9e5;--bg:#f5f8f6}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:850px;margin:48px auto;padding:0 18px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+h1{font-size:clamp(27px,5vw,38px);line-height:1.1;margin:0 0 8px}.sub{color:var(--muted);margin:0}
+button{border:0;border-radius:12px;background:var(--green);color:white;font-weight:700;padding:13px 18px;font-size:15px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
+.panel{margin-top:24px;background:white;border:1px solid var(--line);border-radius:18px;padding:20px}
+.status{color:var(--muted);font-size:14px}.class{padding:15px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
+.class h2{font-size:18px;margin:0}.meta{color:var(--muted);font-size:14px}.pill{display:inline-block;background:#e8f6ee;color:#087f45;padding:3px 9px;border-radius:20px;font-size:13px;font-weight:700}
+a{color:var(--green)}.note{font-size:13px;color:var(--muted);margin-top:18px}
+</style>
+</head>
+<body><main>
+<div class="top"><div><h1>Friskis – lediga klasser</h1><p class="sub">Visar träningspass med lediga platser.</p></div><button id="refresh">Uppdatera klasser</button></div>
+<section class="panel"><div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div><div id="results"></div></section>
+<p class="note">Anläggningsfilter: 6184, 6186, 6185, 6188 och 6187. Uppgifterna hämtas först när du själv uppdaterar.</p>
+<script>
+const SOURCE='https://friskissvettis.goactivebooking.com/class-web-categories/22/classes?facility=6184%7C6186%7C6185%7C6188%7C6187';
+const statusEl=document.querySelector('#status'), resultsEl=document.querySelector('#results'), button=document.querySelector('#refresh');
+function setStatus(s){statusEl.textContent=s}
+function text(el){return (el?.textContent||'').replace(/\\s+/g,' ').trim()}
+function parseClasses(doc){
+  const anchors=[...doc.querySelectorAll('a[href]')];
+  const candidates=[];
+  const seen=new Set();
+  for(const a of anchors){
+    const card=a.closest('article,[class*="class"],[class*="event"],[class*="card"],li')||a.parentElement;
+    if(!card) continue;
+    const content=text(card);
+    if(content.length<18||content.length>1200) continue;
+    const key=content+'|'+a.href;
+    if(seen.has(key)) continue; seen.add(key);
+    const booking=/(boka|book|reserve)/i.test(content);
+    const availability=/(\\d+\\s*(lediga|platser kvar|available)|ledig plats|available spot)/i.test(content);
+    const full=/(fullbokad|fullt|full|wait.?list|reservlista)/i.test(content);
+    if(booking||availability||(!full&&/\\b(\\d{1,2}:\\d{2})\\b/.test(content))){
+      candidates.push({content,url:a.href,availability,full});
+    }
+  }
+  return candidates.filter(x=>x.availability&&!x.full);
+}
+async function refresh(){
+ button.disabled=true;resultsEl.replaceChildren();setStatus('Hämtar klasser från GoActiveBooking …');
+ try{
+  const response=await fetch(SOURCE,{mode:'cors',credentials:'omit',cache:'no-store'});
+  if(!response.ok) throw new Error('Källsidan svarade med HTTP '+response.status+'.');
+  const html=await response.text();
+  const doc=new DOMParser().parseFromString(html,'text/html');
+  const classes=parseClasses(doc);
+  if(!classes.length){
+    setStatus('Sidan gick att läsa, men vi kunde inte säkert identifiera lediga klasser i HTML-svaret. Vi behöver undersöka sidans faktiska klassdata/API innan filtreringen kan göras korrekt.');
+  }else{
+    setStatus('Hämtad '+new Date().toLocaleString('sv-SE')+' · '+classes.length+' möjliga lediga klasser');
+    for(const item of classes){
+      const row=document.createElement('article');row.className='class';
+      const title=document.createElement('h2');title.textContent=item.content.slice(0,100);
+      const meta=document.createElement('div');meta.className='meta';meta.textContent='Öppna bokningen för detaljer';
+      const link=document.createElement('a');link.href=item.url;link.target='_blank';link.rel='noopener';link.textContent='Till bokningen';
+      row.append(title,meta,link);resultsEl.append(row);
+    }
+  }
+ }catch(err){
+  const msg=String(err);
+  if(err instanceof TypeError||/fetch|cors|network/i.test(msg)){
+   setStatus('Webbläsaren kunde inte läsa GoActiveBooking direkt (troligen CORS-skydd). Ingen klassdata har hämtats. Nästa steg är att hitta ett publikt JSON-anrop som tillåter anrop från den här webbplatsen, eller använda en liten proxy.');
+  }else setStatus('Kunde inte hämta klasser: '+msg);
+ }finally{button.disabled=false}
+}
+button.addEventListener('click',refresh);
+</script></main></body></html>
