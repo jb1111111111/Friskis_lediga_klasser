@@ -97,7 +97,10 @@ const myBookingsSection=document.querySelector('#myBookingsSection'),myBookingsR
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
 let activities=[];
 let myBookings=[];
-const descriptionCache=new Map();
+const DESCRIPTION_CACHE_KEY='friskisDescriptionCacheV1';
+let descriptionCache=new Map();
+try{descriptionCache=new Map(Object.entries(JSON.parse(localStorage.getItem(DESCRIPTION_CACHE_KEY)||'{}')))}catch{descriptionCache=new Map()}
+function saveDescriptionCache(){try{localStorage.setItem(DESCRIPTION_CACHE_KEY,JSON.stringify(Object.fromEntries(descriptionCache)))}catch{}}
 let selectedDay=null; // null betyder alla dagar
 let preferences={availability:'available',passFilter:'all',favorites:[],businessUnits:[...BUSINESS_UNITS]};
 try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];if(!Array.isArray(preferences.businessUnits))preferences.businessUnits=[...BUSINESS_UNITS];preferences.businessUnits=preferences.businessUnits.map(Number).filter(id=>BUSINESS_UNITS.includes(id));}catch{}
@@ -143,7 +146,7 @@ async function loadPassDescription(pass,buttonEl,container){
       const data=await response.json().catch(()=>({}));
       if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
       description=passDescriptionFromProduct(data.product);
-      descriptionCache.set(key,description||null);
+      descriptionCache.set(key,description||null);saveDescriptionCache();
     }
     if(description){
       container.textContent=description;container.hidden=false;
