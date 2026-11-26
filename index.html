@@ -55,7 +55,7 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
   <div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div>
   <div id="results"></div>
 </section>
-<p class="note">Dina filter och favoriter sparas automatiskt i den här webbläsaren. Datumvalet börjar alltid på dagens datum. Listan omfattar 14 dagar framåt. Bokningslösenordet sparas endast i den aktuella flikens session. Avbokning via sidan gäller bokningar som gjorts från just den här sidan och webbläsaren.</p>
+<p class="note">Dina filter och favoriter sparas automatiskt i den här webbläsaren. Datumvalet börjar alltid på dagens datum. Listan omfattar 14 dagar framåt. Bokningslösenordet sparas endast i den aktuella flikens session. Mina bokningar hämtas direkt från Friskis och inkluderar även bokningar som gjorts på andra enheter.</p>
 <script>
 const API='https://friskis-api.benny-larsson-23a.workers.dev';
 const BUSINESS_UNITS=[6184,6186,6185,6188,6187];
@@ -79,7 +79,7 @@ activateBookingEl.addEventListener('click',async()=>{
   const candidate=appPasswordEl.value.trim();
   if(!candidate){updateAuthState('Ange bokningslösenordet först.');return}
   activateBookingEl.disabled=true;updateAuthState('Kontrollerar lösenord …');
-  try{await verifyAppPassword(candidate);appPassword=candidate;sessionStorage.setItem(APP_PASSWORD_KEY,candidate);appPasswordEl.value='';updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.');render()}
+  try{await verifyAppPassword(candidate);appPassword=candidate;sessionStorage.setItem(APP_PASSWORD_KEY,candidate);appPasswordEl.value='';await loadMyBookings();updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.');render()}
   catch(error){appPassword='';sessionStorage.removeItem(APP_PASSWORD_KEY);updateAuthState(error.message)}
   finally{activateBookingEl.disabled=false}
 });
@@ -89,6 +89,7 @@ const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
 let activities=[];
+let myBookings=[];
 let selectedDay=null; // null betyder alla dagar
 let preferences={availability:'available',passFilter:'all',favorites:[],businessUnits:[...BUSINESS_UNITS]};
 try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];if(!Array.isArray(preferences.businessUnits))preferences.businessUnits=[...BUSINESS_UNITS];preferences.businessUnits=preferences.businessUnits.map(Number).filter(id=>BUSINESS_UNITS.includes(id));}catch{}
@@ -198,18 +199,21 @@ function render(){
     const activityId=Number(pass.id||pass.groupActivity?.id||pass.groupActivityProduct?.id);
     if(Number.isSafeInteger(activityId)&&activityId>0){
       const actions=document.createElement('div');actions.className='booking-actions';
+      const existingBooking=myBookings.find(b=>Number(b.groupActivity?.id)===activityId);
       const savedBooking=ownBookings[String(activityId)];
-      if(savedBooking?.bookingId){
-        const cancel=document.createElement('button');cancel.type='button';cancel.className='booking-action cancel';cancel.textContent='Avboka mitt pass';
+      const bookingId=existingBooking?.groupActivityBooking?.id||savedBooking?.bookingId;
+      if(bookingId){
+        const cancel=document.createElement('button');cancel.type='button';cancel.className='booking-action cancel';cancel.textContent='Avboka';
         cancel.disabled=!appPassword;
-        cancel.title=appPassword?'Avboka bokningen som gjorts från den här webbplatsen':'Aktivera bokning med ditt lösenord för att avboka';
-        cancel.addEventListener('click',()=>cancelClass(activityId,cancel));
+        cancel.title=appPassword?'Avboka ditt bokade pass':'Aktivera bokning med ditt lösenord för att avboka';
+        cancel.addEventListener('click',()=>cancelClass(activityId,bookingId,pass.name||existingBooking?.groupActivity?.name||'passet',cancel));
         actions.append(cancel);
       }else{
-        const book=document.createElement('button');book.type='button';book.className='booking-action';book.textContent=spots>0?'Boka pass':'Fullbokat';
-        book.disabled=!appPassword||spots<=0;
-        book.title=!appPassword?'Aktivera bokning med ditt lösenord':(spots<=0?'Det finns inga lediga platser':'Boka det här passet');
-        if(spots>0)book.addEventListener('click',()=>bookClass(pass,activityId,book));
+        const waitlist=spots<=0;
+        const book=document.createElement('button');book.type='button';book.className='booking-action';book.textContent=waitlist?'Skriv upp på väntelistan':'Boka';
+        book.disabled=!appPassword;
+        book.title=!appPassword?'Aktivera bokning med ditt lösenord':(waitlist?'Ställ dig i kön till passet':'Boka det här passet');
+        book.addEventListener('click',()=>bookClass(pass,activityId,book,waitlist));
         actions.append(book);
       }
       row.append(actions);
@@ -222,12 +226,20 @@ function render(){
 }
 availabilityEl.addEventListener('change',()=>{preferences.availability=availabilityEl.value;savePreferences();render()});
 passFilterEl.addEventListener('change',()=>{preferences.passFilter=passFilterEl.value;savePreferences();render()});
+async function loadMyBookings(){
+  if(!appPassword){myBookings=[];return}
+  const midnight=new Date();midnight.setHours(0,0,0,0);
+  const query='?startTimePoint='+encodeURIComponent(midnight.toISOString());
+  const data=await bookingRequest('/bookings'+query,{method:'GET'});
+  myBookings=Array.isArray(data?.bookings)?data.bookings:[];
+}
 async function refresh(){
   button.disabled=true;setStatus('Hämtar aktuella pass …');
   try{
     const response=await fetch(API+'/classes',{method:'GET',cache:'no-store'});
     if(!response.ok){let detail='';try{const err=await response.json();detail=err.error||err.message||''}catch{}throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''))}
     const payload=await response.json();activities=getActivities(payload);
+    if(appPassword){try{await loadMyBookings()}catch(error){if(error.message.includes('lösenord'))throw error;updateAuthState('Passlistan hämtades, men Mina bokningar kunde inte läsas: '+error.message)}}
     if(!activities.length)throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
     renderFacilityFilters();render();
   }catch(err){setStatus('Kunde inte hämta klasser: '+String(err.message||err))}
@@ -239,26 +251,26 @@ async function bookingRequest(path,options={}){
   if(!response.ok){if(response.status===401){appPassword='';sessionStorage.removeItem(APP_PASSWORD_KEY);updateAuthState('Lösenordet godkändes inte längre. Aktivera bokning igen.')}throw new Error(data?.error||('HTTP '+response.status))}
   return data;
 }
-async function bookClass(pass,activityId,buttonEl){
+async function bookClass(pass,activityId,buttonEl,allowWaitingList=false){
   if(!appPassword)return;
-  if(!confirm('Vill du boka '+(pass.name||'det här passet')+'?'))return;
-  buttonEl.disabled=true;buttonEl.textContent='Bokar …';
+  if(!confirm(allowWaitingList?'Vill du ställa dig på väntelistan för '+(pass.name||'det här passet')+'?':'Vill du boka '+(pass.name||'det här passet')+'?'))return;
+  buttonEl.disabled=true;buttonEl.textContent=allowWaitingList?'Ställer dig i kö …':'Bokar …';
   try{
-    const data=await bookingRequest('/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({groupActivity:activityId,allowWaitingList:false})});
+    const data=await bookingRequest('/bookings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({groupActivity:activityId,allowWaitingList})});
     const bookingId=data?.booking?.groupActivityBooking?.id;
     if(!bookingId)throw new Error('BRP bekräftade bokningen men inget boknings-ID kom tillbaka. Kontrollera Mina bokningar innan du försöker igen.');
     ownBookings[String(activityId)]={bookingId:String(bookingId),name:pass.name||'Träningspass',start:pass.duration?.start};
-    saveOwnBookings();setStatus('Passet är bokat!');render();
+    saveOwnBookings();await loadMyBookings();setStatus(allowWaitingList?'Du är uppskriven på väntelistan.':'Passet är bokat!');render();
   }catch(error){alert('Bokningen misslyckades: '+error.message);render()}
 }
-async function cancelClass(activityId,buttonEl){
+async function cancelClass(activityId,bookingId,bookingName,buttonEl){
   if(!appPassword)return;
-  const booking=ownBookings[String(activityId)];if(!booking?.bookingId)return;
-  if(!confirm('Vill du avboka '+booking.name+'?'))return;
+  if(!bookingId)return;
+  if(!confirm('Vill du avboka '+bookingName+'?'))return;
   buttonEl.disabled=true;buttonEl.textContent='Avbokar …';
   try{
-    await bookingRequest('/bookings/'+encodeURIComponent(booking.bookingId),{method:'DELETE'});
-    delete ownBookings[String(activityId)];saveOwnBookings();setStatus('Bokningen är avbokad.');render();
+    await bookingRequest('/bookings/'+encodeURIComponent(bookingId),{method:'DELETE'});
+    delete ownBookings[String(activityId)];saveOwnBookings();await loadMyBookings();setStatus('Bokningen är avbokad.');render();
   }catch(error){alert('Avbokningen misslyckades: '+error.message);render()}
 }
 button.addEventListener('click',refresh);
