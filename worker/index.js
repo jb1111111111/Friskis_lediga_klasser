@@ -73,6 +73,19 @@ export default {
         const classes = activities.filter(activity => BUSINESS_UNITS.includes(Number(activity.businessUnit?.id)) && !activity.cancelled && activity.duration?.start);
         return jsonResponse({ groupActivities: classes, count: classes.length, fetchedAt: new Date().toISOString() });
       }
+      if (request.method === "GET" && url.pathname === "/descriptions") {
+        const token = await brpLogin(env);
+        const params = new URLSearchParams();
+        params.set("producttype", "groupActivity");
+        params.set("businessunitids", BUSINESS_UNITS.join(","));
+        params.set("language", "sv");
+        params.set("includeassociatedbusinessunits", "false");
+        const response = await fetch(`${API_BASE}/products?${params.toString()}`, { headers: brpHeaders(token) });
+        const data = await readBrpResponse(response);
+        if (!response.ok) return jsonResponse({ error: "Could not fetch group activity products from BRP", status: response.status, details: data }, 502);
+        const products = Array.isArray(data) ? data : data?.products || data?.items || data?.data || data?.results || [];
+        return jsonResponse({ products, count: products.length, fetchedAt: new Date().toISOString() });
+      }
       if (request.method === "GET" && url.pathname === "/bookings") {
         if (!env.APP_PASSWORD) return jsonResponse({ error: "APP_PASSWORD is not configured in Cloudflare" }, 503);
         const supplied = request.headers.get("X-App-Password") || "";
