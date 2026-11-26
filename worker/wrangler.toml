@@ -1,0 +1,5 @@
+name = "friskis-api"
+main = "index.js"
+compatibility_date = "2026-11-26"
+
+# BRP_USERNAME och BRP_PASSWORD ska konfigureras som Cloudflare Secrets.
