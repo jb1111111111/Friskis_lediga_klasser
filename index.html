@@ -36,6 +36,7 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
 .booking-actions{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin-top:10px}.booking-actions .booking-action{white-space:nowrap;flex:0 0 auto;padding:8px 10px;font-size:12px}
 .booking-action.cancel{background:#a52a45}
 .description-action{background:#e9f2ec;color:var(--green)}
+.logout-area{display:flex;justify-content:flex-end;margin-top:14px}
 .booking-action:disabled{opacity:.55;cursor:wait}
 @media(max-width:520px){main{margin:24px auto}.panel{padding:14px}.filters{grid-template-columns:1fr}.top button{width:100%}}
 </style>
@@ -46,7 +47,6 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
   <div class="authbar">
     <input id="appPassword" type="password" autocomplete="current-password" placeholder="Bokningslösenord" aria-label="Bokningslösenord">
     <button id="activateBooking" type="button">Aktivera bokning</button>
-    <button id="logoutBooking" type="button" hidden>Logga ut</button>
     <span id="authState" class="auth-state">Bokning är låst tills du anger ditt separata bokningslösenord.</span>
   </div>
   <div id="myBookingsSection" hidden>
@@ -62,6 +62,7 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
   <div id="days" class="days" aria-label="Välj dag"></div>
   <div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div>
   <div id="results"></div>
+  <div class="logout-area"><button id="logoutBooking" type="button" class="booking-action cancel" hidden>Logga ut</button></div>
 </section>
 <p class="note">Dina filter och favoriter sparas automatiskt i den här webbläsaren. Datumvalet börjar alltid på dagens datum. Listan omfattar 14 dagar framåt. Bokningslösenordet sparas endast i den aktuella flikens session. Mina bokningar hämtas direkt från Friskis och inkluderar även bokningar som gjorts på andra enheter.</p>
 <script>
