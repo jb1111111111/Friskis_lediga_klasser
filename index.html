@@ -12,6 +12,7 @@ h1{font-size:clamp(27px,5vw,38px);line-height:1.1;margin:0 0 8px}.sub{color:var(
 button,select{font:inherit}button{border:0;border-radius:11px;background:var(--green);color:white;font-weight:700;padding:11px 16px;font-size:14px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
 .panel{margin-top:20px;background:white;border:1px solid var(--line);border-radius:18px;padding:18px}
 .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:17px}
+.facilities{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 16px}.facility-toggle{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:11px;background:#f8faf8;font-size:14px;font-weight:600;cursor:pointer}.facility-toggle input{width:17px;height:17px;margin:0;accent-color:var(--green)}.facility-heading{font-size:13px;color:var(--muted);font-weight:700;margin:0 0 8px}
 .filter label{display:block;font-size:13px;color:var(--muted);font-weight:700;margin-bottom:5px}
 select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:white;color:var(--ink)}
 .days{display:flex;gap:7px;overflow-x:auto;padding:3px 1px 12px;scrollbar-width:thin}
@@ -36,6 +37,8 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
     <div class="filter"><label for="availability">Platser</label><select id="availability"><option value="all">Alla pass</option><option value="available">Endast lediga</option></select></div>
     <div class="filter"><label for="passFilter">Pass</label><select id="passFilter"><option value="all">Alla pass</option><option value="favorites">Endast mina favoriter</option></select></div>
   </div>
+  <div class="facility-heading">Anläggningar</div>
+  <div id="facilities" class="facilities" aria-label="Välj anläggningar"></div>
   <div id="days" class="days" aria-label="Välj dag"></div>
   <div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div>
   <div id="results"></div>
@@ -46,15 +49,26 @@ const API='https://friskis-api.benny-larsson-23a.workers.dev/classes';
 const BUSINESS_UNITS=[6184,6186,6185,6188,6187];
 const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
-const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days');
+const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
 let activities=[];
 let selectedDay=null; // null betyder alla dagar
-let preferences={availability:'available',passFilter:'all',favorites:[]};
-try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];}catch{}
+let preferences={availability:'available',passFilter:'all',favorites:[],businessUnits:[...BUSINESS_UNITS]};
+try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];if(!Array.isArray(preferences.businessUnits))preferences.businessUnits=[...BUSINESS_UNITS];preferences.businessUnits=preferences.businessUnits.map(Number).filter(id=>BUSINESS_UNITS.includes(id));}catch{}
 availabilityEl.value=preferences.availability;
 passFilterEl.value=preferences.passFilter;
 function savePreferences(){try{localStorage.setItem(STORAGE_KEY,JSON.stringify(preferences));}catch{}}
 function setStatus(s){statusEl.textContent=s}
+function renderFacilityFilters(){
+  facilitiesEl.replaceChildren();
+  const namesById=new Map();
+  for(const p of activities){const id=Number(p.businessUnit?.id);if(BUSINESS_UNITS.includes(id)&&p.businessUnit?.name)namesById.set(id,p.businessUnit.name)}
+  for(const id of BUSINESS_UNITS){
+    const label=document.createElement('label');label.className='facility-toggle';
+    const input=document.createElement('input');input.type='checkbox';input.checked=preferences.businessUnits.includes(id);input.addEventListener('change',()=>{preferences.businessUnits=input.checked?[...preferences.businessUnits,id]:preferences.businessUnits.filter(x=>x!==id);savePreferences();render()});
+    const text=document.createElement('span');text.textContent=namesById.get(id)||('Anläggning '+id);
+    label.append(input,text);facilitiesEl.append(label);
+  }
+}
 function getActivities(payload){if(Array.isArray(payload))return payload;for(const key of ['groupActivities','items','data','results'])if(Array.isArray(payload?.[key]))return payload[key];return []}
 function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
@@ -92,7 +106,7 @@ function toggleFavorite(pass){
 function render(){
   const chosenDate=new Date();chosenDate.setHours(0,0,0,0);
   if(selectedDay!==null)chosenDate.setDate(chosenDate.getDate()+selectedDay);
-  let filtered=activities.filter(p=>BUSINESS_UNITS.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
+  let filtered=activities.filter(p=>preferences.businessUnits.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
   if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0);
   if(selectedDay!==null){
     const chosenKey=dayKey(chosenDate);
@@ -139,10 +153,11 @@ async function refresh(){
     if(!response.ok){let detail='';try{const err=await response.json();detail=err.error||err.message||''}catch{}throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''))}
     const payload=await response.json();activities=getActivities(payload);
     if(!activities.length)throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
-    render();
+    renderFacilityFilters();render();
   }catch(err){setStatus('Kunde inte hämta klasser: '+String(err.message||err))}
   finally{button.disabled=false}
 }
 button.addEventListener('click',refresh);
+renderFacilityFilters();
 makeDays();
 </script></main></body></html>
