@@ -242,12 +242,12 @@ function renderMyBookings(){
       const total=Number(activity.slots?.total);
       const free=Number(activity.slots?.leftToBook);
       if(Number.isFinite(total)&&total>=0){
-        const registered=Number.isFinite(free)&&free>=0?Math.max(0,total-free):null;
         const totalPill=document.createElement('span');totalPill.className='pill queue';totalPill.textContent='Totalt: '+total;stats.append(totalPill);
-        if(registered!==null){const registeredPill=document.createElement('span');registeredPill.className='pill available';registeredPill.textContent='Anmälda: '+registered;stats.append(registeredPill);}
       }
+      const spots=Number.isFinite(free)&&free>=0?free:0;
+      const freePill=document.createElement('span');freePill.className='pill '+(spots>0?'available':'full');freePill.textContent='Lediga: '+spots;stats.append(freePill);
       const queue=waitingListSize(activity);
-      const queuePill=document.createElement('span');queuePill.className='pill queue';queuePill.textContent='Kö: '+(queue===null?'–':queue);stats.append(queuePill);
+      const queuePill=document.createElement('span');queuePill.className='pill queue';queuePill.textContent='På kö: '+(queue===null?'–':queue);stats.append(queuePill);
     }else{
       const unavailable=document.createElement('span');unavailable.className='meta';unavailable.textContent='Deltagarstatistik är inte tillgänglig just nu.';stats.append(unavailable);
     }
