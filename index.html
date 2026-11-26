@@ -84,7 +84,7 @@ activateBookingEl.addEventListener('click',async()=>{
   finally{activateBookingEl.disabled=false}
 });
 if(appPassword){appPasswordEl.placeholder='Lösenord sparat för den här fliken';updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.')}
-window.addEventListener('pagehide',()=>{sessionStorage.removeItem(APP_PASSWORD_KEY)});
+
 const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
