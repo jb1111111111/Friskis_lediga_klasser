@@ -46,6 +46,7 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
   <div class="authbar">
     <input id="appPassword" type="password" autocomplete="current-password" placeholder="Bokningslösenord" aria-label="Bokningslösenord">
     <button id="activateBooking" type="button">Aktivera bokning</button>
+    <button id="logoutBooking" type="button" hidden>Logga ut</button>
     <span id="authState" class="auth-state">Bokning är låst tills du anger ditt separata bokningslösenord.</span>
   </div>
   <div id="myBookingsSection" hidden>
@@ -70,7 +71,13 @@ const BOOKING_STORAGE_KEY='friskisBookingsV1';
 const APP_PASSWORD_KEY='friskisAppPassword';
 const appPasswordEl=document.querySelector('#appPassword');
 const activateBookingEl=document.querySelector('#activateBooking');
+const logoutBookingEl=document.querySelector('#logoutBooking');
 const authStateEl=document.querySelector('#authState');
+function setBookingUiActive(active){
+  appPasswordEl.hidden=active;
+  activateBookingEl.hidden=active;
+  logoutBookingEl.hidden=!active;
+}
 let appPassword=sessionStorage.getItem(APP_PASSWORD_KEY)||'';
 let ownBookings={};
 try{ownBookings=JSON.parse(localStorage.getItem(BOOKING_STORAGE_KEY)||'{}')||{}}catch{ownBookings={}}
@@ -86,11 +93,20 @@ activateBookingEl.addEventListener('click',async()=>{
   const candidate=appPasswordEl.value.trim();
   if(!candidate){updateAuthState('Ange bokningslösenordet först.');return}
   activateBookingEl.disabled=true;updateAuthState('Kontrollerar lösenord …');
-  try{await verifyAppPassword(candidate);appPassword=candidate;sessionStorage.setItem(APP_PASSWORD_KEY,candidate);appPasswordEl.value='';await loadMyBookings();updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.');render()}
+  try{await verifyAppPassword(candidate);appPassword=candidate;sessionStorage.setItem(APP_PASSWORD_KEY,candidate);appPasswordEl.value='';setBookingUiActive(true);await loadMyBookings();updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.');render()}
   catch(error){appPassword='';sessionStorage.removeItem(APP_PASSWORD_KEY);updateAuthState(error.message)}
   finally{activateBookingEl.disabled=false}
 });
-if(appPassword){appPasswordEl.placeholder='Lösenord sparat för den här fliken';updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.')}
+logoutBookingEl.addEventListener('click',()=>{
+  appPassword='';
+  sessionStorage.removeItem(APP_PASSWORD_KEY);
+  myBookings=[];
+  setBookingUiActive(false);
+  updateAuthState('Du har loggat ut. Bokning är låst tills du aktiverar den igen.');
+  render();
+});
+if(appPassword){setBookingUiActive(true);updateAuthState('Bokningsfunktionerna är aktiverade i den här fliken.')}
+else{setBookingUiActive(false)}
 
 const STORAGE_KEY='friskisClassPreferencesV1';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
