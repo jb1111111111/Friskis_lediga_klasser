@@ -21,7 +21,7 @@ button{border:0;border-radius:12px;background:var(--green);color:white;font-weig
 <section class="panel"><div id="status" class="status">Tryck på Uppdatera klasser för att hämta aktuell information.</div><div id="results"></div></section>
 <p class="note">Anläggningar: Uppsala-anläggningarna i urvalet. Listan uppdateras endast när du trycker på knappen.</p>
 <script>
-const API='https://friskissvettis.brpsystems.com/brponline/api/ver3/apps/59/groupactivities';
+const API='https://friskis-api.benny-larsson-23a.workers.dev/classes';
 const BUSINESS_UNITS=[6184,6186,6185,6188,6187];
 const CUSTOMER_ID='1370766';
 const statusEl=document.querySelector('#status'),resultsEl=document.querySelector('#results'),button=document.querySelector('#refresh');
@@ -61,28 +61,18 @@ function render(activities){
 async function refresh(){
   button.disabled=true;resultsEl.replaceChildren();setStatus('Hämtar aktuella pass …');
   try{
-    const now=new Date();
-    const end=new Date(now);
-    end.setDate(end.getDate()+7);
-    end.setHours(23,59,59,999);
-    const params=new URLSearchParams();
-    BUSINESS_UNITS.forEach(id=>params.append('businessUnit',String(id)));
-    params.set('customer',CUSTOMER_ID);
-    params.set('groupActivitiesFor','web');
-    params.set('period.start',now.toISOString());
-    params.set('period.end',end.toISOString());
-    params.set('webCategory','22');
-    const response=await fetch(API+'?'+params.toString(),{mode:'cors',credentials:'omit',cache:'no-store'});
-    if(!response.ok) throw new Error('API:t svarade med HTTP '+response.status+'.');
+    const response=await fetch(API,{method:'GET',cache:'no-store'});
+    if(!response.ok) {
+      let detail='';
+      try { const err=await response.json(); detail=err.error||err.message||''; } catch {}
+      throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''));
+    }
     const payload=await response.json();
     const activities=getActivities(payload);
-    if(!activities.length) throw new Error('API-svaret innehöll ingen lista med pass i ett format vi känner igen.');
+    if(!activities.length) throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
     render(activities);
   }catch(err){
-    const msg=String(err);
-    if(err instanceof TypeError||/fetch|cors|network/i.test(msg)){
-      setStatus('Webbläsaren blockerade API-anropet (troligen CORS). Då behöver vi lägga till en liten serverlös proxy; sidan kan inte hämta datan direkt från webbläsaren.');
-    }else setStatus('Kunde inte hämta klasser: '+msg);
+    setStatus('Kunde inte hämta klasser: '+String(err.message||err));
   }finally{button.disabled=false}
 }
 button.addEventListener('click',refresh);
