@@ -97,7 +97,7 @@ const myBookingsSection=document.querySelector('#myBookingsSection'),myBookingsR
 const availabilityEl=document.querySelector('#availability'),passFilterEl=document.querySelector('#passFilter'),daysEl=document.querySelector('#days'),facilitiesEl=document.querySelector('#facilities');
 let activities=[];
 let myBookings=[];
-let groupActivityProducts=[];
+const descriptionCache=new Map();
 let selectedDay=null; // null betyder alla dagar
 let preferences={availability:'available',passFilter:'all',favorites:[],businessUnits:[...BUSINESS_UNITS]};
 try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');preferences={...preferences,...saved};if(!Array.isArray(preferences.favorites))preferences.favorites=[];if(!Array.isArray(preferences.businessUnits))preferences.businessUnits=[...BUSINESS_UNITS];preferences.businessUnits=preferences.businessUnits.map(Number).filter(id=>BUSINESS_UNITS.includes(id));}catch{}
@@ -119,23 +119,43 @@ function renderFacilityFilters(){
 function getActivities(payload){if(Array.isArray(payload))return payload;for(const key of ['groupActivities','items','data','results'])if(Array.isArray(payload?.[key]))return payload[key];return []}
 function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
-function passDescription(p){
-  const candidates=[p.description,p.webDescription,p.longDescription,p.groupActivityProduct?.description,p.groupActivityProduct?.webDescription,p.groupActivity?.description,p.product?.description];
-  for(const value of candidates){if(typeof value==='string'&&value.trim())return value.trim();if(value&&typeof value==='object'){const text=value.text||value.value||value.description;if(typeof text==='string'&&text.trim())return text.trim();}}
-  const productId=Number(p.groupActivityProduct?.id||p.product?.id||p.groupActivity?.product?.id);
-  let product=productId?groupActivityProducts.find(x=>Number(x.id)===productId):null;
-  if(!product){
-    const activityName=String(p.name||p.groupActivityProduct?.name||p.groupActivity?.name||'').trim().toLocaleLowerCase('sv-SE');
-    product=groupActivityProducts.find(x=>String(x.name||'').trim().toLocaleLowerCase('sv-SE')===activityName);
-  }
-  if(!product)return '';
-  if(typeof product.description==='string'&&product.description.trim())return product.description.trim();
-  const translations=product.descriptiontranslations||product.descriptionTranslations;
+function passDescriptionFromProduct(product){
+  if(typeof product?.description==='string'&&product.description.trim())return product.description.trim();
+  const translations=product?.descriptiontranslations||product?.descriptionTranslations;
   if(Array.isArray(translations)){
     const sv=translations.find(x=>String(x.language||'').toLowerCase()==='sv');
     if(typeof sv?.translation==='string'&&sv.translation.trim())return sv.translation.trim();
   }
   return '';
+}
+async function loadPassDescription(pass,buttonEl,container){
+  const productId=Number(pass.groupActivityProduct?.id||pass.product?.id||pass.groupActivity?.product?.id);
+  const businessUnitId=Number(pass.businessUnit?.id);
+  if(!Number.isSafeInteger(productId)||productId<=0||!BUSINESS_UNITS.includes(businessUnitId)){
+    buttonEl.disabled=true;buttonEl.textContent='Beskrivning saknas';return;
+  }
+  const key=productId+':'+businessUnitId;
+  buttonEl.disabled=true;buttonEl.textContent='Hämtar beskrivning …';
+  try{
+    let description=descriptionCache.get(key);
+    if(description===undefined){
+      const response=await fetch(API+'/description?productId='+encodeURIComponent(productId)+'&businessUnit='+encodeURIComponent(businessUnitId),{method:'GET',cache:'no-store'});
+      const data=await response.json().catch(()=>({}));
+      if(!response.ok)throw new Error(data.error||('HTTP '+response.status));
+      description=passDescriptionFromProduct(data.product);
+      descriptionCache.set(key,description||null);
+    }
+    if(description){
+      container.textContent=description;container.hidden=false;
+      buttonEl.textContent='Dölj beskrivning';buttonEl.disabled=false;
+      buttonEl.onclick=()=>{container.hidden=!container.hidden;buttonEl.textContent=container.hidden?'Visa passbeskrivning':'Dölj beskrivning'};
+    }else{
+      buttonEl.textContent='Ingen beskrivning tillgänglig';buttonEl.disabled=true;
+    }
+  }catch(error){
+    buttonEl.disabled=false;buttonEl.textContent='Försök hämta beskrivning igen';
+    setStatus('Kunde inte hämta passbeskrivningen: '+error.message);
+  }
 }
 function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
 function waitingListSize(p){
@@ -227,8 +247,13 @@ function render(){
     const meta=document.createElement('div');meta.className='meta';
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
-    const description=passDescription(pass);
-    if(description){const detail=document.createElement('div');detail.className='description';detail.textContent=description;row.append(detail)}
+    const descriptionButton=document.createElement('button');
+    descriptionButton.type='button';descriptionButton.className='booking-action';
+    descriptionButton.textContent='Visa passbeskrivning';
+    const descriptionDetail=document.createElement('div');
+    descriptionDetail.className='description';descriptionDetail.hidden=true;
+    descriptionButton.addEventListener('click',()=>loadPassDescription(pass,descriptionButton,descriptionDetail));
+    row.append(descriptionButton,descriptionDetail);
     const spots=Number(pass.slots?.leftToBook)||0;
     const total=Number(pass.slots?.total);
     const hasTotal=Number.isFinite(total)&&total>=0;
@@ -290,7 +315,6 @@ async function refresh(){
     const response=await fetch(API+'/classes',{method:'GET',cache:'no-store'});
     if(!response.ok){let detail='';try{const err=await response.json();detail=err.error||err.message||''}catch{}throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''))}
     const payload=await response.json();activities=getActivities(payload);
-    try{const descriptionResponse=await fetch(API+'/descriptions',{method:'GET',cache:'no-store'});if(descriptionResponse.ok){const descriptionData=await descriptionResponse.json();groupActivityProducts=Array.isArray(descriptionData?.products)?descriptionData.products:[];}else{groupActivityProducts=[];}}catch(error){groupActivityProducts=[];}
     if(appPassword){try{await loadMyBookings()}catch(error){if(error.message.includes('lösenord'))throw error;updateAuthState('Passlistan hämtades, men Mina bokningar kunde inte läsas: '+error.message)}}
     if(!activities.length)throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
     renderFacilityFilters();render();
