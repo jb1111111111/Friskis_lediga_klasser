@@ -73,63 +73,18 @@ export default {
         const classes = activities.filter(activity => BUSINESS_UNITS.includes(Number(activity.businessUnit?.id)) && !activity.cancelled && activity.duration?.start);
         return jsonResponse({ groupActivities: classes, count: classes.length, fetchedAt: new Date().toISOString() });
       }
-      if (request.method === "GET" && url.pathname === "/descriptions") {
+      if (request.method === "GET" && url.pathname === "/description") {
+        const productId = Number(url.searchParams.get("productId"));
+        const businessUnitId = Number(url.searchParams.get("businessUnit"));
+        if (!Number.isSafeInteger(productId) || productId <= 0) return jsonResponse({ error: "productId måste vara ett giltigt ID" }, 400);
+        if (!BUSINESS_UNITS.includes(businessUnitId)) return jsonResponse({ error: "Ogiltig businessUnit" }, 400);
         const token = await brpLogin(env);
-
-        // Hämta samma 14-dagars klasslista som /classes och samla unika produkt/anläggnings-par.
-        const now = new Date();
-        const end = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-        const activityParams = new URLSearchParams();
-        for (const id of BUSINESS_UNITS) activityParams.append("businessUnit", String(id));
-        activityParams.set("customer", String(CUSTOMER_ID));
-        activityParams.set("groupActivitiesFor", "web");
-        activityParams.set("period.start", now.toISOString());
-        activityParams.set("period.end", end.toISOString());
-        activityParams.set("webCategory", "22");
-
-        const activityResponse = await fetch(`${API_BASE}/apps/59/groupactivities?${activityParams.toString()}`, {
-          headers: brpHeaders(token)
-        });
-        const activityData = await readBrpResponse(activityResponse);
-        if (!activityResponse.ok) {
-          return jsonResponse({ error: "Could not fetch classes for product descriptions from BRP", status: activityResponse.status, details: activityData }, 502);
-        }
-
-        const activities = Array.isArray(activityData)
-          ? activityData
-          : activityData?.groupActivities || activityData?.items || activityData?.data || activityData?.results || [];
-        const productRequests = new Map();
-
-        for (const activity of activities) {
-          const productId = Number(activity.groupActivityProduct?.id || activity.product?.id || activity.groupActivity?.product?.id);
-          const businessUnitId = Number(activity.businessUnit?.id);
-          if (!Number.isSafeInteger(productId) || productId <= 0 || !BUSINESS_UNITS.includes(businessUnitId)) continue;
-          productRequests.set(`${productId}:${businessUnitId}`, { productId, businessUnitId });
-        }
-
-        const results = await Promise.all([...productRequests.values()].map(async ({ productId, businessUnitId }) => {
-          const params = new URLSearchParams({
-            businessUnit: String(businessUnitId),
-            customer: String(CUSTOMER_ID)
-          });
-          const response = await fetch(`${API_BASE}/products/groupactivities/${productId}?${params.toString()}`, {
-            headers: brpHeaders(token)
-          });
-          const data = await readBrpResponse(response);
-          if (!response.ok) return { ok: false, productId, businessUnitId, status: response.status, details: data };
-          const product = data?.product || data?.groupActivityProduct || data;
-          return { ok: true, product };
-        }));
-
-        const products = results.filter(item => item.ok && item.product && typeof item.product === "object").map(item => item.product);
-        const errors = results.filter(item => !item.ok);
-        return jsonResponse({
-          products,
-          count: products.length,
-          requested: productRequests.size,
-          errors,
-          fetchedAt: new Date().toISOString()
-        });
+        const params = new URLSearchParams({ businessUnit: String(businessUnitId), customer: String(CUSTOMER_ID) });
+        const response = await fetch(`${API_BASE}/products/groupactivities/${productId}?${params.toString()}`, { headers: brpHeaders(token) });
+        const data = await readBrpResponse(response);
+        if (!response.ok) return jsonResponse({ error: "Kunde inte hämta passbeskrivningen från BRP", status: response.status, details: data }, 502);
+        const product = data?.product || data?.groupActivityProduct || data;
+        return jsonResponse({ product, fetchedAt: new Date().toISOString() });
       }
       if (request.method === "GET" && url.pathname === "/bookings") {
         if (!env.APP_PASSWORD) return jsonResponse({ error: "APP_PASSWORD is not configured in Cloudflare" }, 503);
