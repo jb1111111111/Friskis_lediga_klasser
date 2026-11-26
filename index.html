@@ -20,7 +20,10 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
 .dayname{display:block;font-size:12px;font-weight:500;opacity:.85}.daynum{display:block;font-size:15px}
 .status{color:var(--muted);font-size:14px;margin:5px 0 12px}.class{padding:14px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
 .classhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.class h2{font-size:17px;margin:0}.meta{color:var(--muted);font-size:13px;margin:3px 0 7px}
-.pill{display:inline-block;background:#e8f6ee;color:#087f45;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700}
+.pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700}
+.pill.available{background:#e2f5e9;color:#087f45}
+.pill.full{background:#fde7ef;color:#a51d50}
+.pill.queue{background:#f1f3f5;color:#46515a;margin-left:6px}
 .fav{background:transparent;color:#b17b00;padding:0 4px;font-size:24px;line-height:1;min-width:34px}.fav:hover{background:#fff8df}
 .note{font-size:12px;color:var(--muted);margin:16px 2px}
 @media(max-width:520px){main{margin:24px auto}.panel{padding:14px}.filters{grid-template-columns:1fr}.top button{width:100%}}
@@ -56,6 +59,13 @@ function getActivities(payload){if(Array.isArray(payload))return payload;for(con
 function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
 function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
+function waitingListSize(p){
+  const candidates=[p.waitinglistsize,p.waitingListSize,p.waitingList?.size,p.waitingList?.count,p.slots?.waitinglistsize,p.slots?.waitingListSize,p.slots?.waitingList,p.slots?.waitlist];
+  for(const value of candidates){
+    if(value!==undefined&&value!==null&&value!==''&&Number.isFinite(Number(value)))return Math.max(0,Number(value));
+  }
+  return null;
+}
 function dayKey(date){return date.getFullYear()+'-'+String(date.getMonth()+1).padStart(2,'0')+'-'+String(date.getDate()).padStart(2,'0')}
 function makeDays(){
   daysEl.replaceChildren();
@@ -103,7 +113,17 @@ function render(){
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
     const spots=Number(pass.slots?.leftToBook)||0;
-    const count=document.createElement('span');count.className='pill';count.textContent=spots>0?spots+' lediga platser':'Fullbokat';row.append(count);
+    const count=document.createElement('span');
+    count.className='pill '+(spots>0?'available':'full');
+    count.textContent=spots>0?spots+' platser kvar':'Fullbokat';
+    row.append(count);
+    const queue=waitingListSize(pass);
+    if(queue!==null){
+      const queueLabel=document.createElement('span');
+      queueLabel.className='pill queue';
+      queueLabel.textContent='Kö: '+queue;
+      row.append(queueLabel);
+    }
     resultsEl.append(row);
   }
   setStatus(selectedDay===null
