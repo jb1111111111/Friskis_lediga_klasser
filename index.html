@@ -140,18 +140,22 @@ function render(){
     row.append(head,meta);
     const spots=Number(pass.slots?.leftToBook)||0;
     const total=Number(pass.slots?.total);
-    const hasTotal=Number.isFinite(total)&&total>0;
+    const hasTotal=Number.isFinite(total)&&total>=0;
     const count=document.createElement('span');
     count.className='pill '+(spots>0?'available':'full');
-    count.textContent=spots>0
-      ? spots+' platser kvar'+(hasTotal?' av '+total:'')
-      : 'Fullbokat'+(hasTotal?' · '+total+' platser':'');
+    count.textContent='Lediga: '+spots;
     row.append(count);
+    if(hasTotal){
+      const totalLabel=document.createElement('span');
+      totalLabel.className='pill queue';
+      totalLabel.textContent='Totalt: '+total;
+      row.append(totalLabel);
+    }
     const queue=waitingListSize(pass);
     if(queue!==null){
       const queueLabel=document.createElement('span');
       queueLabel.className='pill queue';
-      queueLabel.textContent='Kö: '+queue;
+      queueLabel.textContent='På kö: '+queue;
       row.append(queueLabel);
     }
     resultsEl.append(row);
