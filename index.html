@@ -74,7 +74,8 @@ function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'sho
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
 function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
 function waitingListSize(p){
-  // BRP har använt flera stavningar/strukturer för köinformation.
+  // inWaitingList är antalet personer i kön enligt BRP-svaret.
+  if(p.inWaitingList!==undefined&&p.inWaitingList!==null&&Number.isFinite(Number(p.inWaitingList)))return Math.max(0,Number(p.inWaitingList));
   const countKeys=new Set(['waitinglistsize','waitinglistcount','waitinglistlength','waitlistsize','waitlistcount','waitlistlength','queuecount','queuesize']);
   const seen=new Set();
   function find(value,depth=0){
@@ -138,9 +139,13 @@ function render(){
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
     const spots=Number(pass.slots?.leftToBook)||0;
+    const total=Number(pass.slots?.total);
+    const hasTotal=Number.isFinite(total)&&total>0;
     const count=document.createElement('span');
     count.className='pill '+(spots>0?'available':'full');
-    count.textContent=spots>0?spots+' platser kvar':'Fullbokat';
+    count.textContent=spots>0
+      ? spots+' platser kvar'+(hasTotal?' av '+total:'')
+      : 'Fullbokat'+(hasTotal?' · '+total+' platser':'');
     row.append(count);
     const queue=waitingListSize(pass);
     if(queue!==null){
