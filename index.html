@@ -11,7 +11,7 @@ main{max-width:900px;margin:38px auto;padding:0 16px}.top{display:flex;align-ite
 h1{font-size:clamp(27px,5vw,38px);line-height:1.1;margin:0 0 8px}.sub{color:var(--muted);margin:0}
 button,select{font:inherit}button{border:0;border-radius:11px;background:var(--green);color:white;font-weight:700;padding:11px 16px;font-size:14px;cursor:pointer}button:disabled{opacity:.6;cursor:wait}
 .panel{margin-top:20px;background:white;border:1px solid var(--line);border-radius:18px;padding:18px}
-.bookings-title{font-size:19px;margin:4px 0 8px}.booking-card{padding:12px 0;border-bottom:1px solid var(--line)}.booking-card:last-child{border-bottom:0}.booking-card .booking-name{font-weight:750}.booking-card .meta{margin:3px 0 8px}
+.bookings-title{font-size:19px;margin:4px 0 8px}.booking-card{padding:12px 0;border-bottom:1px solid var(--line)}.booking-card:last-child{border-bottom:0}.booking-card .booking-name{font-weight:750}.booking-card .meta{margin:3px 0 8px}.booking-stats{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:17px}
 .facilities{display:flex;flex-wrap:wrap;gap:9px;margin:0 0 16px}.facility-toggle{display:flex;align-items:center;gap:8px;padding:8px 11px;border:1px solid var(--line);border-radius:11px;background:#f8faf8;font-size:14px;font-weight:600;cursor:pointer}.facility-toggle input{width:17px;height:17px;margin:0;accent-color:var(--green)}.facility-heading{font-size:13px;color:var(--muted);font-weight:700;margin:0 0 8px}
 .filter label{display:block;font-size:13px;color:var(--muted);font-weight:700;margin-bottom:5px}
@@ -236,11 +236,26 @@ function renderMyBookings(){
     const meta=document.createElement('div');meta.className='meta';
     meta.textContent=[booking.duration?.start?localDateTime(booking.duration.start):'',booking.businessUnit?.name||''].filter(Boolean).join(' · ');
     const label=document.createElement('span');label.className='pill available';label.textContent='DIN BOKNING';
+    const activity=activities.find(p=>Number(p.id||p.groupActivity?.id)===Number(booking.groupActivity.id)&&(!booking.businessUnit?.id||Number(p.businessUnit?.id)===Number(booking.businessUnit.id)));
+    const stats=document.createElement('div');stats.className='booking-stats';
+    if(activity){
+      const total=Number(activity.slots?.total);
+      const free=Number(activity.slots?.leftToBook);
+      if(Number.isFinite(total)&&total>=0){
+        const registered=Number.isFinite(free)&&free>=0?Math.max(0,total-free):null;
+        const totalPill=document.createElement('span');totalPill.className='pill queue';totalPill.textContent='Totalt: '+total;stats.append(totalPill);
+        if(registered!==null){const registeredPill=document.createElement('span');registeredPill.className='pill available';registeredPill.textContent='Anmälda: '+registered;stats.append(registeredPill);}
+      }
+      const queue=waitingListSize(activity);
+      const queuePill=document.createElement('span');queuePill.className='pill queue';queuePill.textContent='Kö: '+(queue===null?'–':queue);stats.append(queuePill);
+    }else{
+      const unavailable=document.createElement('span');unavailable.className='meta';unavailable.textContent='Deltagarstatistik är inte tillgänglig just nu.';stats.append(unavailable);
+    }
     const actions=document.createElement('div');actions.className='booking-actions';
     const cancel=document.createElement('button');cancel.type='button';cancel.className='booking-action cancel';cancel.textContent='Avboka';cancel.disabled=!appPassword;
     const activityId=Number(booking.groupActivity.id),bookingId=booking.groupActivityBooking.id;
     cancel.addEventListener('click',()=>cancelClass(activityId,bookingId,booking.groupActivity?.name||'passet',cancel));
-    actions.append(cancel);row.append(title,meta,label,actions);myBookingsResults.append(row);
+    actions.append(cancel);row.append(title,meta,label,stats,actions);myBookingsResults.append(row);
   }
 }
 function toggleFavorite(pass){
