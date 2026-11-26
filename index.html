@@ -159,7 +159,7 @@ function render(){
   const chosenDate=new Date();chosenDate.setHours(0,0,0,0);
   if(selectedDay!==null)chosenDate.setDate(chosenDate.getDate()+selectedDay);
   let filtered=activities.filter(p=>preferences.businessUnits.includes(Number(p.businessUnit?.id))&&!p.cancelled&&p.duration?.start);
-  if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0);
+  if(preferences.availability==='available')filtered=filtered.filter(p=>Number(p.slots?.leftToBook)>0||myBookings.some(b=>Number(b.groupActivity?.id)===Number(p.id||p.groupActivity?.id||p.groupActivityProduct?.id)));
   if(selectedDay!==null){
     const chosenKey=dayKey(chosenDate);
     filtered=filtered.filter(p=>dayKey(new Date(p.duration.start))===chosenKey);
