@@ -133,6 +133,11 @@ function passDescriptionFromProduct(product){
   return '';
 }
 async function loadPassDescription(pass,buttonEl,container){
+  if(container.dataset.loaded==='true'){
+    container.hidden=!container.hidden;
+    buttonEl.textContent=container.hidden?'Visa passbeskrivning':'Dölj beskrivning';
+    return;
+  }
   const productId=Number(pass.groupActivityProduct?.id||pass.product?.id||pass.groupActivity?.product?.id);
   const businessUnitId=Number(pass.businessUnit?.id);
   if(!Number.isSafeInteger(productId)||productId<=0||!BUSINESS_UNITS.includes(businessUnitId)){
@@ -150,9 +155,8 @@ async function loadPassDescription(pass,buttonEl,container){
       descriptionCache.set(key,description||null);saveDescriptionCache();
     }
     if(description){
-      container.textContent=description;container.hidden=false;
+      container.textContent=description;container.hidden=false;container.dataset.loaded='true';
       buttonEl.textContent='Dölj beskrivning';buttonEl.disabled=false;
-      buttonEl.onclick=()=>{container.hidden=!container.hidden;buttonEl.textContent=container.hidden?'Visa passbeskrivning':'Dölj beskrivning'};
     }else{
       buttonEl.textContent='Ingen beskrivning tillgänglig';buttonEl.disabled=true;
     }
