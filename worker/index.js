@@ -77,6 +77,9 @@ export default {
         if (!env.APP_PASSWORD) return jsonResponse({ error: "APP_PASSWORD is not configured in Cloudflare" }, 503);
         const supplied = request.headers.get("X-App-Password") || "";
         if (supplied.length !== env.APP_PASSWORD.length || supplied !== env.APP_PASSWORD) return jsonResponse({ error: "Fel bokningslösenord" }, 401);
+        if (request.method === "POST" && url.pathname === "/verify") {
+          return jsonResponse({ success: true });
+        }
         const token = await brpLogin(env);
         if (request.method === "POST" && url.pathname === "/bookings") {
           let body;
