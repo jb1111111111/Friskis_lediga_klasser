@@ -225,7 +225,7 @@ passFilterEl.addEventListener('change',()=>{preferences.passFilter=passFilterEl.
 async function refresh(){
   button.disabled=true;setStatus('Hämtar aktuella pass …');
   try{
-    const response=await fetch(API,{method:'GET',cache:'no-store'});
+    const response=await fetch(API+'/classes',{method:'GET',cache:'no-store'});
     if(!response.ok){let detail='';try{const err=await response.json();detail=err.error||err.message||''}catch{}throw new Error('Worker svarade med HTTP '+response.status+(detail?' – '+detail:''))}
     const payload=await response.json();activities=getActivities(payload);
     if(!activities.length)throw new Error('Svaret innehöll ingen lista med pass. Kontrollera Worker-svaret.');
