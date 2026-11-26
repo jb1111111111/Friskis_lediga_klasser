@@ -22,6 +22,7 @@ select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;b
 .dayname{display:block;font-size:12px;font-weight:500;opacity:.85}.daynum{display:block;font-size:15px}
 .status{color:var(--muted);font-size:14px;margin:5px 0 12px}.class{padding:14px 0;border-bottom:1px solid var(--line)}.class:last-child{border:0}
 .classhead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.class h2{font-size:17px;margin:0}.meta{color:var(--muted);font-size:13px;margin:3px 0 7px}
+.description{font-size:14px;line-height:1.45;color:#34443a;margin:7px 0 10px;white-space:pre-line}
 .pill{display:inline-block;padding:3px 9px;border-radius:20px;font-size:12px;font-weight:700}
 .pill.available{background:#e2f5e9;color:#087f45}
 .pill.full{background:#fde7ef;color:#a51d50}
@@ -117,6 +118,11 @@ function renderFacilityFilters(){
 function getActivities(payload){if(Array.isArray(payload))return payload;for(const key of ['groupActivities','items','data','results'])if(Array.isArray(payload?.[key]))return payload[key];return []}
 function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}).format(new Date(iso))}
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
+function passDescription(p){
+  const candidates=[p.description,p.webDescription,p.longDescription,p.groupActivityProduct?.description,p.groupActivityProduct?.webDescription,p.groupActivity?.description,p.product?.description];
+  for(const value of candidates){if(typeof value==='string'&&value.trim())return value.trim();if(value&&typeof value==='object'){const text=value.text||value.value||value.description;if(typeof text==='string'&&text.trim())return text.trim();}}
+  return '';
+}
 function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
 function waitingListSize(p){
   // BRP skickar normalt köantalet under slots.inWaitingList.
@@ -207,6 +213,8 @@ function render(){
     const meta=document.createElement('div');meta.className='meta';
     meta.textContent=[localDateTime(pass.duration.start),pass.businessUnit?.name,names(pass.locations),names(pass.instructors)].filter(Boolean).join(' · ');
     row.append(head,meta);
+    const description=passDescription(pass);
+    if(description){const detail=document.createElement('div');detail.className='description';detail.textContent=description;row.append(detail)}
     const spots=Number(pass.slots?.leftToBook)||0;
     const total=Number(pass.slots?.total);
     const hasTotal=Number.isFinite(total)&&total>=0;
