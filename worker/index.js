@@ -73,6 +73,19 @@ export default {
         const classes = activities.filter(activity => BUSINESS_UNITS.includes(Number(activity.businessUnit?.id)) && !activity.cancelled && activity.duration?.start);
         return jsonResponse({ groupActivities: classes, count: classes.length, fetchedAt: new Date().toISOString() });
       }
+      if (request.method === "GET" && url.pathname === "/bookings") {
+        if (!env.APP_PASSWORD) return jsonResponse({ error: "APP_PASSWORD is not configured in Cloudflare" }, 503);
+        const supplied = request.headers.get("X-App-Password") || "";
+        if (supplied.length !== env.APP_PASSWORD.length || supplied !== env.APP_PASSWORD) return jsonResponse({ error: "Fel bokningslösenord" }, 401);
+        const token = await brpLogin(env);
+        const startTimePoint = url.searchParams.get("startTimePoint") || new Date().toISOString();
+        const params = new URLSearchParams({ startTimePoint });
+        const response = await fetch(`${API_BASE}/customers/${CUSTOMER_ID}/bookings/groupactivities?${params.toString()}`, { headers: brpHeaders(token) });
+        const data = await readBrpResponse(response);
+        if (!response.ok) return jsonResponse({ error: "Could not fetch bookings from BRP", status: response.status, details: data }, 502);
+        const bookings = Array.isArray(data) ? data : data?.items || data?.data || data?.results || [];
+        return jsonResponse({ bookings, count: bookings.length, fetchedAt: new Date().toISOString() });
+      }
       if (request.method === "POST" || request.method === "DELETE") {
         if (!env.APP_PASSWORD) return jsonResponse({ error: "APP_PASSWORD is not configured in Cloudflare" }, 503);
         const supplied = request.headers.get("X-App-Password") || "";
