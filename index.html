@@ -74,8 +74,9 @@ function localDateTime(iso){return new Intl.DateTimeFormat('sv-SE',{weekday:'sho
 function names(items){if(!Array.isArray(items))return '';return items.map(x=>typeof x==='string'?x:(x.name||x.fullName||'')).filter(Boolean).join(', ')}
 function passKey(p){return String(p.groupActivityProduct?.id||p.name||p.groupActivityProduct?.name||'').trim().toLocaleLowerCase('sv-SE')}
 function waitingListSize(p){
-  // inWaitingList är antalet personer i kön enligt BRP-svaret.
-  if(p.inWaitingList!==undefined&&p.inWaitingList!==null&&Number.isFinite(Number(p.inWaitingList)))return Math.max(0,Number(p.inWaitingList));
+  // BRP skickar normalt köantalet under slots.inWaitingList.
+  const waitingCount=p.slots?.inWaitingList??p.inWaitingList;
+  if(waitingCount!==undefined&&waitingCount!==null&&Number.isFinite(Number(waitingCount)))return Math.max(0,Number(waitingCount));
   const countKeys=new Set(['waitinglistsize','waitinglistcount','waitinglistlength','waitlistsize','waitlistcount','waitlistlength','queuecount','queuesize']);
   const seen=new Set();
   function find(value,depth=0){
